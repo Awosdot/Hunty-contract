@@ -2209,36 +2209,25 @@ impl HuntyCore {
         correct
     }
 
-    /// This function verifies the submitted answer by hashing it and comparing
-    /// with the stored answer hash. If correct, updates player progress and emits
-    /// success events. If incorrect, emits an analytics event and returns an error.
+    /// Computes the score awarded for completing `clue`, applying a
+    /// time-decay penalty based on how long the player took.
+    ///
+    /// The base score is `clue.points * clue.difficulty * clue.weight`.
+    /// This is then scaled by a multiplier (in basis points, where 10000
+    /// bps = 1x) that starts at `hunt.start_multiplier_bps` and decreases
+    /// by 5000 bps for every full 50-second interval elapsed between
+    /// `started_at` and `completed_at`, floored at a minimum of 10000 bps
+    /// (1x). All intermediate arithmetic saturates to avoid overflow.
     ///
     /// # Arguments
-    /// * `env` - The Soroban environment
-    /// * `hunt_id` - The hunt ID
-    /// * `clue_id` - The clue ID to answer
-    /// * `player` - The address of the player submitting the answer
-    /// * `answer` - The plain-text answer submission
-    /// * `submission_nonce` - Caller-chosen unique nonce for this submission envelope
-    /// * `submitted_at` - Client timestamp captured when the submission was signed
+    /// * `hunt` - The hunt, providing `start_multiplier_bps`
+    /// * `clue` - The clue being scored, providing points/difficulty/weight
+    /// * `started_at` - Timestamp the player started the hunt/clue
+    /// * `completed_at` - Timestamp the answer was accepted
     ///
     /// # Returns
-    /// `Ok(())` on successful answer verification and progress update
-    ///
-    /// # Errors
-    /// * `HuntNotFound` - Hunt does not exist
-    /// * `HuntNotActive` - Hunt is not currently active or has ended
-    /// * `PlayerNotRegistered` - Player has not registered for this hunt
-    /// * `ClueNotFound` - Clue does not exist in this hunt
-    /// * `ClueAlreadyCompleted` - Player has already completed this clue
-    /// * `InvalidAnswer` - Submitted answer does not match the stored hash
-    /// * `DuplicateSubmission` - Submission nonce/timestamp envelope was already processed
-    /// * `SubmissionExpired` - Submission timestamp is too old or too far in the future
-    ///
-    /// # Events
-    /// * `ClueCompleted` - Emitted when answer is correct
-    /// * `HuntCompleted` - Emitted when all required clues are completed
-    /// * `AnswerIncorrect` - Emitted when answer is wrong (for analytics)
+    /// The final score as a `u32` (not itself a basis-point value; the
+    /// decay multiplier applied internally is in basis-point units).
     pub(crate) fn calculate_score(
         hunt: &Hunt,
         clue: &Clue,
@@ -2404,6 +2393,36 @@ impl HuntyCore {
         Ok(())
     }
 
+    /// This function verifies the submitted answer by hashing it and comparing
+    /// with the stored answer hash. If correct, updates player progress and emits
+    /// success events. If incorrect, emits an analytics event and returns an error.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `hunt_id` - The hunt ID
+    /// * `clue_id` - The clue ID to answer
+    /// * `player` - The address of the player submitting the answer
+    /// * `answer` - The plain-text answer submission
+    /// * `submission_nonce` - Caller-chosen unique nonce for this submission envelope
+    /// * `submitted_at` - Client timestamp captured when the submission was signed
+    ///
+    /// # Returns
+    /// `Ok(())` on successful answer verification and progress update
+    ///
+    /// # Errors
+    /// * `HuntNotFound` - Hunt does not exist
+    /// * `HuntNotActive` - Hunt is not currently active or has ended
+    /// * `PlayerNotRegistered` - Player has not registered for this hunt
+    /// * `ClueNotFound` - Clue does not exist in this hunt
+    /// * `ClueAlreadyCompleted` - Player has already completed this clue
+    /// * `InvalidAnswer` - Submitted answer does not match the stored hash
+    /// * `DuplicateSubmission` - Submission nonce/timestamp envelope was already processed
+    /// * `SubmissionExpired` - Submission timestamp is too old or too far in the future
+    ///
+    /// # Events
+    /// * `ClueCompleted` - Emitted when answer is correct
+    /// * `HuntCompleted` - Emitted when all required clues are completed
+    /// * `AnswerIncorrect` - Emitted when answer is wrong (for analytics)
     pub fn submit_answer(
         env: Env,
         hunt_id: u64,
